@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = "https://api.sayalloimmo.com/api";
+const API_URL = "${process.env.NEXT_PUBLIC_BASE_URL}/api";
 
 export interface LoginCredentials {
   email: string;

@@ -42,7 +42,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           // Get a token from the generate-token endpoint if available
           try {
             const response = await fetch(
-              "https://api.sayalloimmo.com/generate-token"
+              "${process.env.NEXT_PUBLIC_BASE_URL}/generate-token"
             );
             const data = await response.json();
             localStorage.setItem("authToken", data.token);

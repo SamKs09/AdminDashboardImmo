@@ -1,8 +1,8 @@
 import axios from "axios";
 import authService from "./authService";
 
-const API_URL = "https://api.sayalloimmo.com/api";
-const BASE_URL = "https://api.sayalloimmo.com";
+const API_URL = "${process.env.NEXT_PUBLIC_BASE_URL}/api";
+const BASE_URL = "${process.env.NEXT_PUBLIC_BASE_URL}";
 
 export interface Property {
   _id?: string; // MongoDB ID

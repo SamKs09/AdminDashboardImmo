@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { Property } from "../api/propertyService"; // Import Property interface from api
+
 interface PropertyFormProps {
   setProperties: React.Dispatch<React.SetStateAction<Property[]>>;
   properties: Property[];
@@ -37,8 +38,10 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
     isRental: false,
   });
 
-  const [imageFiles, setImageFiles] = useState<File[]>([]); // For "Image principale"
-  const [planFiles, setPlanFiles] = useState<File[]>([]); // For "Plan / Image secondaire"
+  const [imageFiles, setImageFiles] = useState<File[]>([]); // For new uploads
+  const [planFiles, setPlanFiles] = useState<File[]>([]); // For new plan uploads
+  const [existingImages, setExistingImages] = useState<string[]>([]); // For existing images to keep
+  const [existingPlanImages, setExistingPlanImages] = useState<string[]>([]); // For existing plan images to keep
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentTag, setCurrentTag] = useState("");
@@ -68,7 +71,28 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         baths: editingProperty.baths || undefined,
         tags: editingProperty.tags || [],
       });
-      setImageFiles([]); // Reset new uploads for editing
+
+      // Set existing images
+      if (editingProperty.image) {
+        const images = Array.isArray(editingProperty.image)
+          ? editingProperty.image
+          : [editingProperty.image];
+        setExistingImages(images);
+      } else {
+        setExistingImages([]);
+      }
+
+      // Set existing plan images
+      if (editingProperty.planImage) {
+        const planImages = Array.isArray(editingProperty.planImage)
+          ? editingProperty.planImage
+          : [editingProperty.planImage];
+        setExistingPlanImages(planImages);
+      } else {
+        setExistingPlanImages([]);
+      }
+
+      setImageFiles([]);
       setPlanFiles([]);
     } else {
       setFormData({
@@ -87,6 +111,8 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
       });
       setImageFiles([]);
       setPlanFiles([]);
+      setExistingImages([]);
+      setExistingPlanImages([]);
     }
   }, [editingProperty]);
 
@@ -129,38 +155,85 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
     }
   };
 
+  // In your PropertyForm component
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const filesArray = Array.from(e.target.files);
-      if (filesArray.length + imageFiles.length > 10) {
+
+      console.log(
+        "Files selected:",
+        filesArray.map((f) => ({
+          name: f.name,
+          type: f.type,
+          size: f.size,
+        }))
+      );
+
+      // Check file types on frontend too
+      const invalidFiles = filesArray.filter((file) => {
+        const isValidImage = file.type.startsWith("image/");
+        const isValidVideo = file.type.startsWith("video/");
+        const hasValidExtension =
+          /\.(jfif|jpg|png|jpeg|gif|webp|mp4|avi|mov|wmv|flv|webm|mkv)$/i.test(
+            file.name
+          );
+
+        return !isValidImage && !isValidVideo && !hasValidExtension;
+      });
+
+      if (invalidFiles.length > 0) {
         setError(
-          "Vous pouvez télécharger jusqu'à 10 images maximum pour l'image principale."
+          `Fichiers non supportés: ${invalidFiles
+            .map((f) => f.name)
+            .join(", ")}`
         );
         return;
       }
+
+      const totalImages =
+        existingImages.length + imageFiles.length + filesArray.length;
+
+      if (totalImages > 10) {
+        setError(
+          "Vous pouvez avoir jusqu'à 10 images/vidéos maximum pour l'image principale."
+        );
+        return;
+      }
+
       setImageFiles((prev) => [...prev, ...filesArray]);
+      setError(null);
     }
   };
-
   const handlePlanChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const filesArray = Array.from(e.target.files);
-      if (filesArray.length + planFiles.length > 5) {
-        setError(
-          "Vous pouvez télécharger jusqu'à 5 images maximum pour le plan."
-        );
+      const totalPlanImages =
+        existingPlanImages.length + planFiles.length + filesArray.length;
+
+      if (totalPlanImages > 5) {
+        setError("Vous pouvez avoir jusqu'à 5 images maximum pour le plan.");
         return;
       }
+
       setPlanFiles((prev) => [...prev, ...filesArray]);
+      setError(null);
     }
   };
 
-  const removeImage = (index: number) => {
+  const removeNewImage = (index: number) => {
     setImageFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const removePlanImage = (index: number) => {
+  const removeExistingImage = (index: number) => {
+    setExistingImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removeNewPlanImage = (index: number) => {
     setPlanFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removeExistingPlanImage = (index: number) => {
+    setExistingPlanImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   const addTag = () => {
@@ -223,14 +296,24 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         propertyFormData.append("tags", tag);
       });
 
-      // Add image files
-      imageFiles.forEach((file) => {
-        propertyFormData.append("images", file); // Field name matches backend
+      // Add existing images to keep
+      existingImages.forEach((image) => {
+        propertyFormData.append("existingImages", image);
       });
 
-      // Add plan files
+      // Add existing plan images to keep
+      existingPlanImages.forEach((planImage) => {
+        propertyFormData.append("existingPlanImages", planImage);
+      });
+
+      // Add new image files
+      imageFiles.forEach((file) => {
+        propertyFormData.append("images", file);
+      });
+
+      // Add new plan files
       planFiles.forEach((file) => {
-        propertyFormData.append("planImages", file); // Field name matches backend
+        propertyFormData.append("planImages", file);
       });
 
       let success = false;
@@ -258,6 +341,8 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         });
         setImageFiles([]);
         setPlanFiles([]);
+        setExistingImages([]);
+        setExistingPlanImages([]);
         setCurrentTag("");
         setShowPropertyForm(false);
         setEditingProperty(null);
@@ -278,6 +363,8 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
     setCurrentTag("");
     setImageFiles([]);
     setPlanFiles([]);
+    setExistingImages([]);
+    setExistingPlanImages([]);
   };
 
   if (!showPropertyForm) return null;
@@ -446,53 +533,110 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
               </div>
             </div>
 
-            {/* Images */}
+            {/* Images & Videos */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Image principale (max 10)
+                  Images/Vidéos principales (max 10 total, JPG/PNG/MP4)
                 </label>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,video/mp4"
                   multiple
                   onChange={handleImageChange}
                   className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
                   disabled={isSubmitting}
                 />
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {imageFiles.map((file, index) => (
-                    <div key={index} className="relative">
-                      <img
-                        src={URL.createObjectURL(file)}
-                        alt="Preview"
-                        className="h-20 w-20 object-cover rounded border"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeImage(index)}
-                        className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-1"
-                        disabled={isSubmitting}
-                      >
-                        ×
-                      </button>
+
+                <div className="mt-2">
+                  {/* Existing Images */}
+                  {existingImages.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-sm text-gray-600 mb-2">
+                        Images existantes:
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {existingImages.map((media, index) => (
+                          <div
+                            key={`existing-${index}`}
+                            className="relative"
+                            style={{ width: "calc(25% - 0.5rem)" }}
+                          >
+                            {media.endsWith(".mp4") ||
+                            media.includes("video") ? (
+                              <video
+                                src={
+                                  media.startsWith("http")
+                                    ? media
+                                    : `${process.env.NEXT_PUBLIC_BASE_URL}/${media}`
+                                }
+                                controls
+                                className="h-20 w-full object-cover rounded border"
+                              />
+                            ) : (
+                              <img
+                                src={
+                                  media.startsWith("http")
+                                    ? media
+                                    : `${process.env.NEXT_PUBLIC_BASE_URL}0/${media}`
+                                }
+                                alt={`Existing ${index + 1}`}
+                                className="h-20 w-full object-cover rounded border"
+                              />
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeExistingImage(index)}
+                              className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-1 text-xs"
+                              disabled={isSubmitting}
+                              title="Supprimer"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                  {editingProperty?.image && imageFiles.length === 0 && (
-                    <div className="relative">
-                      <img
-                        src={
-                          Array.isArray(editingProperty.image)
-                            ? editingProperty.image[0].startsWith("http")
-                              ? editingProperty.image[0]
-                              : `https://api.sayalloimmo.com/${editingProperty.image[0]}`
-                            : editingProperty.image.startsWith("http")
-                            ? editingProperty.image
-                            : `https://api.sayalloimmo.com/${editingProperty.image}`
-                        }
-                        alt="Existing Property"
-                        className="h-20 w-20 object-cover rounded border"
-                      />
+                  )}
+
+                  {/* New Images */}
+                  {imageFiles.length > 0 && (
+                    <div>
+                      <p className="text-sm text-gray-600 mb-2">
+                        Nouvelles images/vidéos:
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {imageFiles.map((file, index) => (
+                          <div
+                            key={`new-${index}`}
+                            className="relative"
+                            style={{ width: "calc(25% - 0.5rem)" }}
+                          >
+                            {file.type.startsWith("video/") ? (
+                              <video
+                                src={URL.createObjectURL(file)}
+                                controls
+                                className="h-20 w-full object-cover rounded border"
+                              />
+                            ) : (
+                              <img
+                                src={URL.createObjectURL(file)}
+                                alt="Preview"
+                                className="h-20 w-full object-cover rounded border"
+                              />
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeNewImage(index)}
+                              className="absolute top-0 right-0 bg-blue-600 text-white rounded-full p-1 text-xs"
+                              disabled={isSubmitting}
+                              title="Supprimer"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -500,7 +644,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Plan / Image secondaire (max 5)
+                  Plan / Image secondaire (max 5 total)
                 </label>
                 <input
                   type="file"
@@ -510,31 +654,66 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                   className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
                   disabled={isSubmitting}
                 />
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {planFiles.map((file, index) => (
-                    <div key={index} className="relative">
-                      <img
-                        src={URL.createObjectURL(file)}
-                        alt="Preview"
-                        className="h-20 w-20 object-cover rounded border"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removePlanImage(index)}
-                        className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-1"
-                        disabled={isSubmitting}
-                      >
-                        ×
-                      </button>
+
+                <div className="mt-2">
+                  {/* Existing Plan Images */}
+                  {existingPlanImages.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-sm text-gray-600 mb-2">
+                        Plans existants:
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {existingPlanImages.map((planImage, index) => (
+                          <div
+                            key={`existing-plan-${index}`}
+                            className="relative"
+                          >
+                            <img
+                              src={`${process.env.NEXT_PUBLIC_BASE_URL}/${planImage}`}
+                              alt={`Existing Plan ${index + 1}`}
+                              className="h-20 w-20 object-cover rounded border"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeExistingPlanImage(index)}
+                              className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-1 text-xs"
+                              disabled={isSubmitting}
+                              title="Supprimer"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                  {editingProperty?.planImage && planFiles.length === 0 && (
-                    <div className="relative">
-                      <img
-                        src={`https://api.sayalloimmo.com/${editingProperty.planImage}`}
-                        alt="Existing Plan"
-                        className="h-20 w-20 object-cover rounded border"
-                      />
+                  )}
+
+                  {/* New Plan Images */}
+                  {planFiles.length > 0 && (
+                    <div>
+                      <p className="text-sm text-gray-600 mb-2">
+                        Nouveaux plans:
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {planFiles.map((file, index) => (
+                          <div key={`new-plan-${index}`} className="relative">
+                            <img
+                              src={URL.createObjectURL(file)}
+                              alt="Preview"
+                              className="h-20 w-20 object-cover rounded border"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeNewPlanImage(index)}
+                              className="absolute top-0 right-0 bg-blue-600 text-white rounded-full p-1 text-xs"
+                              disabled={isSubmitting}
+                              title="Supprimer"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
